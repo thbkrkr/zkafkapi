@@ -1,6 +1,7 @@
 package sarama
 
 import (
+	"fmt"
 	"math/rand"
 	"sort"
 	"sync"
@@ -217,12 +218,14 @@ func (client *client) Partitions(topic string) ([]int32, error) {
 	if len(partitions) == 0 {
 		err := client.RefreshMetadata(topic)
 		if err != nil {
+			fmt.Println("Partitions() error while refreshing metadata")
 			return nil, err
 		}
 		partitions = client.cachedPartitions(topic, allPartitions)
 	}
 
 	if partitions == nil {
+		fmt.Println("no paritions found => ErrUnknownTopicOrPartition")
 		return nil, ErrUnknownTopicOrPartition
 	}
 
@@ -290,7 +293,7 @@ func (client *client) Leader(topic string, partitionID int32) (*Broker, error) {
 	leader, err := client.cachedLeader(topic, partitionID)
 
 	if leader == nil {
-		err := client.RefreshMetadata(topic)
+		err = client.RefreshMetadata(topic)
 		if err != nil {
 			return nil, err
 		}
@@ -571,7 +574,7 @@ func (client *client) backgroundMetadataUpdater() {
 func (client *client) tryRefreshMetadata(topics []string, attemptsRemaining int) error {
 	retry := func(err error) error {
 		if attemptsRemaining > 0 {
-			Logger.Printf("client/metadata retrying after %dms... (%d attempts remaining)\n", client.conf.Metadata.Retry.Backoff/time.Millisecond, attemptsRemaining)
+			fmt.Printf("client/metadata retrying after %dms... (%d attempts remaining)\n", client.conf.Metadata.Retry.Backoff/time.Millisecond, attemptsRemaining)
 			time.Sleep(client.conf.Metadata.Retry.Backoff)
 			return client.tryRefreshMetadata(topics, attemptsRemaining-1)
 		}
@@ -580,9 +583,9 @@ func (client *client) tryRefreshMetadata(topics []string, attemptsRemaining int)
 
 	for broker := client.any(); broker != nil; broker = client.any() {
 		if len(topics) > 0 {
-			Logger.Printf("client/metadata fetching metadata for %v from broker %s\n", topics, broker.addr)
+			fmt.Printf("client/metadata fetching metadata for %v from broker %s\n", topics, broker.addr)
 		} else {
-			Logger.Printf("client/metadata fetching metadata for all topics from broker %s\n", broker.addr)
+			fmt.Printf("client/metadata fetching metadata for all topics from broker %s\n", broker.addr)
 		}
 		response, err := broker.GetMetadata(&MetadataRequest{Topics: topics})
 
@@ -590,7 +593,7 @@ func (client *client) tryRefreshMetadata(topics []string, attemptsRemaining int)
 		case nil:
 			// valid response, use it
 			if shouldRetry, err := client.updateMetadata(response); shouldRetry {
-				Logger.Println("client/metadata found some partitions to be leaderless")
+				fmt.Println("client/metadata found some partitions to be leaderless")
 				return retry(err) // note: err can be nil
 			} else {
 				return err
@@ -601,13 +604,13 @@ func (client *client) tryRefreshMetadata(topics []string, attemptsRemaining int)
 			return err
 		default:
 			// some other error, remove that broker and try again
-			Logger.Println("client/metadata got error from broker while fetching metadata:", err)
+			fmt.Println("client/metadata got error from broker while fetching metadata:", err)
 			_ = broker.Close()
 			client.deregisterBroker(broker)
 		}
 	}
 
-	Logger.Println("client/metadata no available broker to send metadata request to")
+	fmt.Println("client/metadata no available broker to send metadata request to")
 	client.resurrectDeadBrokers()
 	return retry(ErrOutOfBrokers)
 }
@@ -622,17 +625,19 @@ func (client *client) updateMetadata(data *MetadataResponse) (retry bool, err er
 	// - if it is an existing ID, but the address we have is stale, discard the old one and save it
 	// - otherwise ignore it, replacing our existing one would just bounce the connection
 	for _, broker := range data.Brokers {
+		fmt.Printf("  broker: %v\n", broker.addr)
 		client.registerBroker(broker)
 	}
 
 	for _, topic := range data.Topics {
+		fmt.Printf("  topic: %v\n", topic.Name)
 		delete(client.metadata, topic.Name)
 		delete(client.cachedPartitionsResults, topic.Name)
 
 		switch topic.Err {
 		case ErrNoError:
 			break
-		case ErrInvalidTopic: // don't retry, don't store partial results
+		case ErrInvalidTopic, ErrTopicAuthorizationFailed: // don't retry, don't store partial results
 			err = topic.Err
 			continue
 		case ErrUnknownTopicOrPartition: // retry, do not store partial partition results
@@ -685,7 +690,7 @@ func (client *client) getConsumerMetadata(consumerGroup string, attemptsRemainin
 	}
 
 	for broker := client.any(); broker != nil; broker = client.any() {
-		Logger.Printf("client/coordinator requesting coordinator for consumergoup %s from %s\n", consumerGroup, broker.Addr())
+		Logger.Printf("client/coordinator requesting coordinator for consumergroup %s from %s\n", consumerGroup, broker.Addr())
 
 		request := new(ConsumerMetadataRequest)
 		request.ConsumerGroup = consumerGroup
@@ -707,7 +712,7 @@ func (client *client) getConsumerMetadata(consumerGroup string, attemptsRemainin
 
 		switch response.Err {
 		case ErrNoError:
-			Logger.Printf("client/coordinator coordinator for consumergoup %s is #%d (%s)\n", consumerGroup, response.Coordinator.ID(), response.Coordinator.Addr())
+			Logger.Printf("client/coordinator coordinator for consumergroup %s is #%d (%s)\n", consumerGroup, response.Coordinator.ID(), response.Coordinator.Addr())
 			return response, nil
 
 		case ErrConsumerCoordinatorNotAvailable:

@@ -3,10 +3,10 @@
 	"ignore": "test",
 	"package": [
 		{
-			"checksumSHA1": "DCucN828YDL1L2e7KLT62Ng1S/Q=",
+			"checksumSHA1": "hHRdFSZIysY5y0Nam8bvx30T8Po=",
 			"path": "github.com/Shopify/sarama",
-			"revision": "8aadb476e66ca998f2f6bb3c993e9a2daa3666b9",
-			"revisionTime": "2016-02-20T13:46:35Z"
+			"revision": "e8020bffa1cae3ddf8068cb03416fc53d1627f3d",
+			"revisionTime": "2016-07-26T17:35:16Z"
 		},
 		{
 			"checksumSHA1": "5rPfda8jFccr3A6heL+JAmi9K9g=",
@@ -21,16 +21,22 @@
 			"revisionTime": "2016-01-04T19:15:39Z"
 		},
 		{
+			"checksumSHA1": "WHl96RVZlOOdF4Lb1OOadMpw8ls=",
+			"path": "github.com/eapache/go-xerial-snappy",
+			"revision": "bb955e01b9346ac19dc29eb16586c90ded99a98c",
+			"revisionTime": "2016-06-09T14:24:08Z"
+		},
+		{
 			"checksumSHA1": "AEGF/lRMFJukJAnRqdCVQ/0I+BY=",
 			"path": "github.com/eapache/queue",
 			"revision": "ded5959c0d4e360646dc9e9908cff48666781367",
 			"revisionTime": "2015-06-06T11:53:03Z"
 		},
 		{
-			"checksumSHA1": "LGIslyYuBGvixk+FVbfCxPUZjTg=",
+			"checksumSHA1": "W+E/2xXcE1GmJ0Qb784ald0Fn6I=",
 			"path": "github.com/golang/snappy",
-			"revision": "427fb6fc07997f43afa32f35e850833760e489a7",
-			"revisionTime": "2016-02-26T06:30:25Z"
+			"revision": "d9eb7a3d35ec988b8585d4a0068e462c27d28380",
+			"revisionTime": "2016-05-29T05:00:41Z"
 		},
 		{
 			"checksumSHA1": "hX+j017F4PEtIUGflAneDtLC6hs=",
@@ -39,5 +45,5 @@
 			"revisionTime": "2016-02-19T14:26:09Z"
 		}
 	],
-	"rootPath": "stash.ovh.net/qaas/topic-info"
+	"rootPath": "github.com/thbkrkr/kafka-topics"
 }
