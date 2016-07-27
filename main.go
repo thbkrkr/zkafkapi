@@ -10,29 +10,45 @@ import (
 )
 
 var (
-	broker = flag.String("broker", "localhost:9091", "Broker")
-	topic  = flag.String("topic", "", "Topic")
+	broker          = flag.String("broker", "localhost:9091", "Broker")
+	topic           = flag.String("topic", "", "Topic")
+	clientID        = flag.String("clientID", "", "ClientID")
+	refreshMetadata = flag.Bool("refreshMetadata", false, "RefreshMetadata")
 )
 
 func main() {
 	flag.Parse()
 
-	client, err := sarama.NewClient([]string{*broker}, sarama.NewConfig())
+	config := sarama.NewConfig()
+	config.ClientID = *clientID
+	//config.Version = sarama.V0_9_0_1
+	client, err := sarama.NewClient([]string{*broker}, config)
 	handleErr(err)
 	defer client.Close()
 
 	if *topic == "" {
 		listTopics(client)
 	} else {
-		listPartitions(client)
+		if *refreshMetadata {
+			getTopic(client)
+		} else {
+			getPartitionsAndOffsets(client)
+		}
 	}
+}
+
+func getTopic(client sarama.Client) {
+	err := client.RefreshMetadata(*topic)
+	handleErr(err)
+
+	printJSON(*topic)
 }
 
 func listTopics(client sarama.Client) {
 	topics, err := client.Topics()
 	handleErr(err)
 
-	printJson(topics)
+	printJSON(topics)
 }
 
 type TopicInfo struct {
@@ -40,7 +56,7 @@ type TopicInfo struct {
 	Partitions map[string]int64
 }
 
-func listPartitions(client sarama.Client) {
+func getPartitionsAndOffsets(client sarama.Client) {
 	topicInfo := TopicInfo{Name: *topic, Partitions: map[string]int64{}}
 
 	partitions, err := client.Partitions(*topic)
@@ -53,10 +69,10 @@ func listPartitions(client sarama.Client) {
 		topicInfo.Partitions[fmt.Sprintf("%d", partitionID)] = logSize
 	}
 
-	printJson(topicInfo)
+	printJSON(topicInfo)
 }
 
-func printJson(obj interface{}) {
+func printJSON(obj interface{}) {
 	data, err := json.Marshal(obj)
 	handleErr(err)
 
