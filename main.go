@@ -10,14 +10,17 @@ import (
 )
 
 var (
-	broker = flag.String("broker", "localhost:9091", "Broker")
-	topic  = flag.String("topic", "", "Topic")
+	broker   = flag.String("broker", "localhost:9091", "Broker")
+	clientID = flag.String("client-id", "sarama", "Client ID")
+	topic    = flag.String("topic", "", "Topic")
 )
 
 func main() {
 	flag.Parse()
 
-	client, err := sarama.NewClient([]string{*broker}, sarama.NewConfig())
+	config := sarama.NewConfig()
+	config.ClientID = *clientID
+	client, err := sarama.NewClient([]string{*broker}, config)
 	handleErr(err)
 	defer client.Close()
 
