@@ -1,101 +1,89 @@
 package main
 
 import (
-	"encoding/json"
-	"flag"
-	"fmt"
 	"os"
-	"os/exec"
-	"strings"
+	"time"
 
 	"github.com/Shopify/sarama"
+	log "github.com/Sirupsen/logrus"
+	"github.com/gin-gonic/gin"
+	"github.com/kelseyhightower/envconfig"
+	"github.com/samuel/go-zookeeper/zk"
+	"github.com/thbkrkr/go-utilz/http"
 )
 
 var (
-	broker   = flag.String("broker", "localhost:9091", "Broker")
-	clientID = flag.String("client-id", "sarama", "Client ID")
-	command  = flag.String("command", "ls", "Command")
-	topic    = flag.String("topic", "", "Topic")
+	conf   Config
+	client sarama.Client
+	conn   *zk.Conn
+
+	buildDate = "dev"
+	gitCommit = "dev"
+	name      = "kafka-topics"
 )
 
+type Config struct {
+	Broker string `envconfig:"B" required:"true"`
+	Key    string `envconfig:"K" required:"true"`
+}
+
 func main() {
-	flag.Parse()
+	envConfig()
+	createKafkaClient()
+	createZkClient()
+	http.API(name, buildDate, gitCommit, router)
+}
 
-	switch *command {
-	case "ls":
-		client := createClient()
-		defer client.Close()
-		listTopics(client)
-	case "show":
-		client := createClient()
-		defer client.Close()
-		listPartitions(client)
-	case "rm":
-		rmTopic()
-	default:
-		fmt.Println("Invalid command")
-		os.Exit(1)
+func router(r *gin.Engine) {
+	r.GET("/help", func(c *gin.Context) {
+		c.JSON(200, []string{
+			" -- Kafka -- ",
+			"POST    /k/topics/:topic  CreateTopic",
+			"GET     /k/topics/:topic  GetTopic",
+			"DELETE  /k/topics/:topic  DeleteTopic",
+			"GET     /k/topics         ListTopics",
+			"GET     /k/offsets        Offsets",
+			" -- Zk -- ",
+			"GET     /z/topics         ZkListTopics",
+			"GET     /z/consumers      ZkListConsumers",
+		})
+	})
+
+	r.POST("/k/topics/:topic", CreateTopic)
+	r.GET("/k/topics/:topic", GetTopic)
+	r.DELETE("/k/topics/:topic", DeleteTopic)
+	r.GET("/k/topics", ListTopics)
+	r.GET("/k/offsets", Offsets)
+
+	r.GET("/z/topics", ZkListTopics)
+	r.GET("/z/consumers", ZkListConsumers)
+}
+
+func envConfig() {
+	err := envconfig.Process("", &conf)
+	if err != nil {
+		log.WithError(err).Fatal("Fail to process env config")
 	}
 }
 
-func createClient() sarama.Client {
+func createKafkaClient() {
 	config := sarama.NewConfig()
-	config.ClientID = *clientID
-	client, err := sarama.NewClient([]string{*broker}, config)
+	config.ClientID = conf.Key
+	c, err := sarama.NewClient([]string{conf.Broker}, config)
 	handleErr(err)
-	return client
+	client = c
 }
 
-func listTopics(client sarama.Client) {
-	topics, err := client.Topics()
+func createZkClient() {
+	c, _, err := zk.Connect([]string{zkURL()}, time.Second)
 	handleErr(err)
-
-	printJson(topics)
-}
-
-type TopicInfo struct {
-	Name       string
-	Partitions map[string]int64
-}
-
-func listPartitions(client sarama.Client) {
-	topicInfo := TopicInfo{Name: *topic, Partitions: map[string]int64{}}
-
-	partitions, err := client.Partitions(*topic)
-	handleErr(err)
-
-	for _, partitionID := range partitions {
-		logSize, err := client.GetOffset(*topic, partitionID, sarama.OffsetNewest)
-		handleErr(err)
-
-		topicInfo.Partitions[fmt.Sprintf("%d", partitionID)] = logSize
-	}
-
-	printJson(topicInfo)
-}
-
-func printJson(obj interface{}) {
-	data, err := json.Marshal(obj)
-	handleErr(err)
-	handleErr(err)
-	fmt.Println(string(data))
+	c.SetLogger(zkLogger{})
+	conn = c
 }
 
 func handleErr(err error) {
 	if err != nil {
-		fmt.Println(err.Error())
+		log.Error(err)
 		os.Exit(1)
 	}
-}
-
-func rmTopic() {
-	out, err := exec.Command("docker", "run", "--rm", "ovhcom/queue-kafka-topics-tools",
-		"--zookeeper", strings.Replace(*broker, "9092", "2181", -1)+"/"+*clientID,
-		"--delete", "--topic", *topic).CombinedOutput()
-	if err != nil {
-		fmt.Println(string(out))
-	}
-	handleErr(err)
-
-	printJson(map[string]string{"out": string(out)})
 }
