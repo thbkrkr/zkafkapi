@@ -2,14 +2,22 @@ package sarama
 
 import (
 	"fmt"
-	"testing"
 )
+
+// TestReporter has methods matching go's testing.T to avoid importing
+// `testing` in the main part of the library.
+type TestReporter interface {
+	Error(...interface{})
+	Errorf(string, ...interface{})
+	Fatal(...interface{})
+	Fatalf(string, ...interface{})
+}
 
 // MockResponse is a response builder interface it defines one method that
 // allows generating a response based on a request body. MockResponses are used
 // to program behavior of MockBroker in tests.
 type MockResponse interface {
-	For(reqBody decoder) (res encoder)
+	For(reqBody versionedDecoder) (res encoder)
 }
 
 // MockWrapper is a mock response builder that returns a particular concrete
@@ -18,7 +26,7 @@ type MockWrapper struct {
 	res encoder
 }
 
-func (mw *MockWrapper) For(reqBody decoder) (res encoder) {
+func (mw *MockWrapper) For(reqBody versionedDecoder) (res encoder) {
 	return mw.res
 }
 
@@ -50,7 +58,7 @@ func NewMockSequence(responses ...interface{}) *MockSequence {
 	return ms
 }
 
-func (mc *MockSequence) For(reqBody decoder) (res encoder) {
+func (mc *MockSequence) For(reqBody versionedDecoder) (res encoder) {
 	res = mc.responses[0].For(reqBody)
 	if len(mc.responses) > 1 {
 		mc.responses = mc.responses[1:]
@@ -62,10 +70,10 @@ func (mc *MockSequence) For(reqBody decoder) (res encoder) {
 type MockMetadataResponse struct {
 	leaders map[string]map[int32]int32
 	brokers map[string]int32
-	t       *testing.T
+	t       TestReporter
 }
 
-func NewMockMetadataResponse(t *testing.T) *MockMetadataResponse {
+func NewMockMetadataResponse(t TestReporter) *MockMetadataResponse {
 	return &MockMetadataResponse{
 		leaders: make(map[string]map[int32]int32),
 		brokers: make(map[string]int32),
@@ -88,7 +96,7 @@ func (mmr *MockMetadataResponse) SetBroker(addr string, brokerID int32) *MockMet
 	return mmr
 }
 
-func (mmr *MockMetadataResponse) For(reqBody decoder) encoder {
+func (mmr *MockMetadataResponse) For(reqBody versionedDecoder) encoder {
 	metadataRequest := reqBody.(*MetadataRequest)
 	metadataResponse := &MetadataResponse{}
 	for addr, brokerID := range mmr.brokers {
@@ -113,10 +121,10 @@ func (mmr *MockMetadataResponse) For(reqBody decoder) encoder {
 // MockOffsetResponse is an `OffsetResponse` builder.
 type MockOffsetResponse struct {
 	offsets map[string]map[int32]map[int64]int64
-	t       *testing.T
+	t       TestReporter
 }
 
-func NewMockOffsetResponse(t *testing.T) *MockOffsetResponse {
+func NewMockOffsetResponse(t TestReporter) *MockOffsetResponse {
 	return &MockOffsetResponse{
 		offsets: make(map[string]map[int32]map[int64]int64),
 		t:       t,
@@ -138,7 +146,7 @@ func (mor *MockOffsetResponse) SetOffset(topic string, partition int32, time, of
 	return mor
 }
 
-func (mor *MockOffsetResponse) For(reqBody decoder) encoder {
+func (mor *MockOffsetResponse) For(reqBody versionedDecoder) encoder {
 	offsetRequest := reqBody.(*OffsetRequest)
 	offsetResponse := &OffsetResponse{}
 	for topic, partitions := range offsetRequest.blocks {
@@ -170,11 +178,11 @@ func (mor *MockOffsetResponse) getOffset(topic string, partition int32, time int
 type MockFetchResponse struct {
 	messages       map[string]map[int32]map[int64]Encoder
 	highWaterMarks map[string]map[int32]int64
-	t              *testing.T
+	t              TestReporter
 	batchSize      int
 }
 
-func NewMockFetchResponse(t *testing.T, batchSize int) *MockFetchResponse {
+func NewMockFetchResponse(t TestReporter, batchSize int) *MockFetchResponse {
 	return &MockFetchResponse{
 		messages:       make(map[string]map[int32]map[int64]Encoder),
 		highWaterMarks: make(map[string]map[int32]int64),
@@ -208,7 +216,7 @@ func (mfr *MockFetchResponse) SetHighWaterMark(topic string, partition int32, of
 	return mfr
 }
 
-func (mfr *MockFetchResponse) For(reqBody decoder) encoder {
+func (mfr *MockFetchResponse) For(reqBody versionedDecoder) encoder {
 	fetchRequest := reqBody.(*FetchRequest)
 	res := &FetchResponse{}
 	for topic, partitions := range fetchRequest.blocks {
@@ -270,10 +278,10 @@ func (mfr *MockFetchResponse) getHighWaterMark(topic string, partition int32) in
 // MockConsumerMetadataResponse is a `ConsumerMetadataResponse` builder.
 type MockConsumerMetadataResponse struct {
 	coordinators map[string]interface{}
-	t            *testing.T
+	t            TestReporter
 }
 
-func NewMockConsumerMetadataResponse(t *testing.T) *MockConsumerMetadataResponse {
+func NewMockConsumerMetadataResponse(t TestReporter) *MockConsumerMetadataResponse {
 	return &MockConsumerMetadataResponse{
 		coordinators: make(map[string]interface{}),
 		t:            t,
@@ -290,7 +298,7 @@ func (mr *MockConsumerMetadataResponse) SetError(group string, kerror KError) *M
 	return mr
 }
 
-func (mr *MockConsumerMetadataResponse) For(reqBody decoder) encoder {
+func (mr *MockConsumerMetadataResponse) For(reqBody versionedDecoder) encoder {
 	req := reqBody.(*ConsumerMetadataRequest)
 	group := req.ConsumerGroup
 	res := &ConsumerMetadataResponse{}
@@ -307,10 +315,10 @@ func (mr *MockConsumerMetadataResponse) For(reqBody decoder) encoder {
 // MockOffsetCommitResponse is a `OffsetCommitResponse` builder.
 type MockOffsetCommitResponse struct {
 	errors map[string]map[string]map[int32]KError
-	t      *testing.T
+	t      TestReporter
 }
 
-func NewMockOffsetCommitResponse(t *testing.T) *MockOffsetCommitResponse {
+func NewMockOffsetCommitResponse(t TestReporter) *MockOffsetCommitResponse {
 	return &MockOffsetCommitResponse{t: t}
 }
 
@@ -332,7 +340,7 @@ func (mr *MockOffsetCommitResponse) SetError(group, topic string, partition int3
 	return mr
 }
 
-func (mr *MockOffsetCommitResponse) For(reqBody decoder) encoder {
+func (mr *MockOffsetCommitResponse) For(reqBody versionedDecoder) encoder {
 	req := reqBody.(*OffsetCommitRequest)
 	group := req.ConsumerGroup
 	res := &OffsetCommitResponse{}
@@ -363,10 +371,10 @@ func (mr *MockOffsetCommitResponse) getError(group, topic string, partition int3
 // MockProduceResponse is a `ProduceResponse` builder.
 type MockProduceResponse struct {
 	errors map[string]map[int32]KError
-	t      *testing.T
+	t      TestReporter
 }
 
-func NewMockProduceResponse(t *testing.T) *MockProduceResponse {
+func NewMockProduceResponse(t TestReporter) *MockProduceResponse {
 	return &MockProduceResponse{t: t}
 }
 
@@ -383,7 +391,7 @@ func (mr *MockProduceResponse) SetError(topic string, partition int32, kerror KE
 	return mr
 }
 
-func (mr *MockProduceResponse) For(reqBody decoder) encoder {
+func (mr *MockProduceResponse) For(reqBody versionedDecoder) encoder {
 	req := reqBody.(*ProduceRequest)
 	res := &ProduceResponse{}
 	for topic, partitions := range req.msgSets {
@@ -409,10 +417,10 @@ func (mr *MockProduceResponse) getError(topic string, partition int32) KError {
 // MockOffsetFetchResponse is a `OffsetFetchResponse` builder.
 type MockOffsetFetchResponse struct {
 	offsets map[string]map[string]map[int32]*OffsetFetchResponseBlock
-	t       *testing.T
+	t       TestReporter
 }
 
-func NewMockOffsetFetchResponse(t *testing.T) *MockOffsetFetchResponse {
+func NewMockOffsetFetchResponse(t TestReporter) *MockOffsetFetchResponse {
 	return &MockOffsetFetchResponse{t: t}
 }
 
@@ -434,7 +442,7 @@ func (mr *MockOffsetFetchResponse) SetOffset(group, topic string, partition int3
 	return mr
 }
 
-func (mr *MockOffsetFetchResponse) For(reqBody decoder) encoder {
+func (mr *MockOffsetFetchResponse) For(reqBody versionedDecoder) encoder {
 	req := reqBody.(*OffsetFetchRequest)
 	group := req.ConsumerGroup
 	res := &OffsetFetchResponse{}

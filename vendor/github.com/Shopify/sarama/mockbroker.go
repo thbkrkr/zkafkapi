@@ -9,7 +9,6 @@ import (
 	"reflect"
 	"strconv"
 	"sync"
-	"testing"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
@@ -20,6 +19,10 @@ const (
 )
 
 type requestHandlerFunc func(req *request) (res encoder)
+
+// RequestNotifierFunc is invoked when a mock broker processes a request successfully
+// and will provides the number of bytes read and written.
+type RequestNotifierFunc func(bytesRead, bytesWritten int)
 
 // MockBroker is a mock Kafka broker that is used in unit tests. It is exposed
 // to facilitate testing of higher level or specialized consumers and producers
@@ -52,16 +55,17 @@ type MockBroker struct {
 	stopper      chan none
 	expectations chan encoder
 	listener     net.Listener
-	t            *testing.T
+	t            TestReporter
 	latency      time.Duration
 	handler      requestHandlerFunc
+	notifier     RequestNotifierFunc
 	history      []RequestResponse
 	lock         sync.Mutex
 }
 
 // RequestResponse represents a Request/Response pair processed by MockBroker.
 type RequestResponse struct {
-	Request  requestBody
+	Request  protocolBody
 	Response encoder
 }
 
@@ -84,6 +88,14 @@ func (b *MockBroker) SetHandlerByMap(handlerMap map[string]MockResponse) {
 		}
 		return mockResponse.For(req.body)
 	})
+}
+
+// SetNotifier set a function that will get invoked whenever a request has been
+// processed successfully and will provide the number of bytes read and written
+func (b *MockBroker) SetNotifier(notifier RequestNotifierFunc) {
+	b.lock.Lock()
+	b.notifier = notifier
+	b.lock.Unlock()
 }
 
 // BrokerID returns broker ID assigned to the broker.
@@ -181,7 +193,7 @@ func (b *MockBroker) handleRequests(conn net.Conn, idx int, wg *sync.WaitGroup) 
 
 	resHeader := make([]byte, 8)
 	for {
-		req, err := decodeRequest(conn)
+		req, bytesRead, err := decodeRequest(conn)
 		if err != nil {
 			Logger.Printf("*** mockbroker/%d/%d: invalid request: err=%+v, %+v", b.brokerID, idx, err, spew.Sdump(req))
 			b.serverError(err)
@@ -209,6 +221,11 @@ func (b *MockBroker) handleRequests(conn net.Conn, idx int, wg *sync.WaitGroup) 
 			break
 		}
 		if len(encodedRes) == 0 {
+			b.lock.Lock()
+			if b.notifier != nil {
+				b.notifier(bytesRead, 0)
+			}
+			b.lock.Unlock()
 			continue
 		}
 
@@ -222,6 +239,12 @@ func (b *MockBroker) handleRequests(conn net.Conn, idx int, wg *sync.WaitGroup) 
 			b.serverError(err)
 			break
 		}
+
+		b.lock.Lock()
+		if b.notifier != nil {
+			b.notifier(bytesRead, len(resHeader)+len(encodedRes))
+		}
+		b.lock.Unlock()
 	}
 	Logger.Printf("*** mockbroker/%d/%d: connection closed, err=%v", b.BrokerID(), idx, err)
 }
@@ -255,16 +278,16 @@ func (b *MockBroker) serverError(err error) {
 	b.t.Errorf(err.Error())
 }
 
-// NewMockBroker launches a fake Kafka broker. It takes a *testing.T as provided by the
+// NewMockBroker launches a fake Kafka broker. It takes a TestReporter as provided by the
 // test framework and a channel of responses to use.  If an error occurs it is
-// simply logged to the *testing.T and the broker exits.
-func NewMockBroker(t *testing.T, brokerID int32) *MockBroker {
+// simply logged to the TestReporter and the broker exits.
+func NewMockBroker(t TestReporter, brokerID int32) *MockBroker {
 	return NewMockBrokerAddr(t, brokerID, "localhost:0")
 }
 
 // NewMockBrokerAddr behaves like newMockBroker but listens on the address you give
 // it rather than just some ephemeral port.
-func NewMockBrokerAddr(t *testing.T, brokerID int32, addr string) *MockBroker {
+func NewMockBrokerAddr(t TestReporter, brokerID int32, addr string) *MockBroker {
 	var err error
 
 	broker := &MockBroker{
