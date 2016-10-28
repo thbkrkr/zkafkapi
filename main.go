@@ -25,6 +25,9 @@ var (
 type Config struct {
 	Broker string `envconfig:"B" required:"true"`
 	Key    string `envconfig:"K" required:"true"`
+
+	MetricsHost  string `envconfig:"METRICS_HOST" required:"true"`
+	MetricsToken string `envconfig:"METRICS_TOKEN" required:"true"`
 }
 
 func main() {
@@ -53,6 +56,7 @@ func router(r *gin.Engine) {
 	r.GET("/k/topics/:topic", GetTopic)
 	r.DELETE("/k/topics/:topic", DeleteTopic)
 	r.GET("/k/topics", ListTopics)
+	r.GET("/k/topics/:topic/metrics", TopicMetrics)
 	r.GET("/k/offsets", Offsets)
 
 	r.GET("/z/topics", ZkListTopics)
