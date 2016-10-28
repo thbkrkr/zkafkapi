@@ -34,6 +34,7 @@ func main() {
 	envConfig()
 	createKafkaClient()
 	createZkClient()
+
 	http.API(name, buildDate, gitCommit, router)
 }
 
@@ -45,6 +46,7 @@ func router(r *gin.Engine) {
 			"GET     /k/topics/:topic  GetTopic",
 			"DELETE  /k/topics/:topic  DeleteTopic",
 			"GET     /k/topics         ListTopics",
+			"GET     /k/topics/:topic/metrics TopicMetrics",
 			"GET     /k/offsets        Offsets",
 			" -- Zk -- ",
 			"GET     /z/topics         ZkListTopics",
@@ -90,4 +92,12 @@ func handleErr(err error) {
 		log.Error(err)
 		os.Exit(1)
 	}
+}
+
+func handlHTTPErr(c *gin.Context, err error) bool {
+	isErr := err != nil
+	if isErr {
+		c.JSON(500, gin.H{"message": err.Error()})
+	}
+	return isErr
 }
