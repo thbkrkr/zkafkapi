@@ -65,6 +65,22 @@ func GetTopic(c *gin.Context) {
 	c.JSON(200, topicInfo)
 }
 
+func UpdateTopic(c *gin.Context) {
+	topic := c.Param("topic")
+	partitions := c.Query("p")
+
+	out, err := exec.Command("docker", "run", "--rm", "ovhcom/queue-kafka-topics-tools",
+		"--zookeeper", zkURL()+"/"+conf.Key,
+		"--alter", "--topic", topic, "--partitions", partitions).CombinedOutput()
+	if err != nil {
+		handlHTTPErr(c, errors.New(string(out)+"(err: "+err.Error()+")"))
+		return
+	}
+
+	c.JSON(200, gin.H{"message": string(out)})
+
+}
+
 func DeleteTopic(c *gin.Context) {
 	topic := c.Param("topic")
 
@@ -81,12 +97,12 @@ func DeleteTopic(c *gin.Context) {
 
 func CreateTopic(c *gin.Context) {
 	topic := c.Param("topic")
-	partition := c.Query("p")
+	partitions := c.Query("p")
 	replicationFactor := c.Query("r")
 
 	out, err := exec.Command("docker", "run", "--rm", "ovhcom/queue-kafka-topics-tools",
 		"--zookeeper", zkURL()+"/"+conf.Key,
-		"--create", "--topic", topic, "--partition", partition,
+		"--create", "--topic", topic, "--partitions", partitions,
 		"--replication-factor", replicationFactor).CombinedOutput()
 	if err != nil {
 		handlHTTPErr(c, errors.New(string(out)))

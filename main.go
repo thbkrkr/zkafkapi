@@ -42,20 +42,22 @@ func router(r *gin.Engine) {
 	r.GET("/help", func(c *gin.Context) {
 		c.JSON(200, []string{
 			" -- Kafka -- ",
-			"POST    /k/topics/:topic  CreateTopic",
-			"GET     /k/topics/:topic  GetTopic",
-			"DELETE  /k/topics/:topic  DeleteTopic",
-			"GET     /k/topics         ListTopics",
-			"GET     /k/topics/:topic/metrics TopicMetrics",
-			"GET     /k/offsets        Offsets",
+			"POST    /k/topics/:topic?p=3&r=2  CreateTopic",
+			"GET     /k/topics/:topic          GetTopic",
+			"PUT     /k/topics/:topic?p=6      UpdateTopic",
+			"DELETE  /k/topics/:topic          DeleteTopic",
+			"GET     /k/topics                 ListTopics",
+			"GET     /k/topics/:topic/metrics  TopicMetrics",
+			"GET     /k/offsets                Offsets",
 			" -- Zk -- ",
-			"GET     /z/topics         ZkListTopics",
-			"GET     /z/consumers      ZkListConsumers",
+			"GET     /z/topics                 ZkListTopics",
+			"GET     /z/consumers              ZkListConsumers",
 		})
 	})
 
 	r.POST("/k/topics/:topic", CreateTopic)
 	r.GET("/k/topics/:topic", GetTopic)
+	r.PUT("/k/topics/:topic", UpdateTopic)
 	r.DELETE("/k/topics/:topic", DeleteTopic)
 	r.GET("/k/topics", ListTopics)
 	r.GET("/k/topics/:topic/metrics", TopicMetrics)
