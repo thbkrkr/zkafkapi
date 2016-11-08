@@ -11,6 +11,11 @@ import (
 )
 
 func ListTopics(c *gin.Context) {
+	err := client.RefreshMetadata([]string{}...)
+	if handlHTTPErr(c, err) {
+		return
+	}
+
 	topics, err := client.Topics()
 	if handlHTTPErr(c, err) {
 		return
@@ -30,6 +35,11 @@ func GetTopic(c *gin.Context) {
 
 	topic := c.Param("topic")
 	topicInfo := topicInfo{Name: topic, Partitions: map[string]int64{}}
+
+	err := client.RefreshMetadata(topic)
+	if handlHTTPErr(c, err) {
+		return
+	}
 
 	partitions, err := client.Partitions(topic)
 	if handlHTTPErr(c, err) {
