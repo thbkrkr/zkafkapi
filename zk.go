@@ -11,15 +11,20 @@ import (
 	"github.com/samuel/go-zookeeper/zk"
 )
 
-func chroot() string { return "/" + conf.Key }
-
 type partition struct {
 	Leader int32   `json:"leader"`
 	Isr    []int32 `json:"isr"`
 }
 
 func ZkListTopics(c *gin.Context) {
-	paths, err := childrenRecursiveInternal(conn, chroot()+"/brokers/topics", "")
+	chroot, err := ZkChroot(c)
+	if err != nil {
+		return
+	}
+
+	log.Info(chroot + "/brokers/topics")
+
+	paths, err := childrenRecursiveInternal(zkClient, chroot+"/brokers/topics", "")
 	if handlHTTPErr(c, err) {
 		return
 	}
@@ -35,7 +40,7 @@ func ZkListTopics(c *gin.Context) {
 				topic = map[string]interface{}{}
 			}
 
-			data, _, err := conn.Get(chroot() + "/brokers/topics/" + path)
+			data, _, err := zkClient.Get(chroot + "/brokers/topics/" + path)
 			if handlHTTPErr(c, err) {
 				return
 			}
@@ -55,7 +60,11 @@ func ZkListTopics(c *gin.Context) {
 }
 
 func ZkListConsumers(c *gin.Context) {
-	paths, err := childrenRecursiveInternal(conn, chroot()+"/consumers", "")
+	chroot, err := ZkChroot(c)
+	if err != nil {
+		return
+	}
+	paths, err := childrenRecursiveInternal(zkClient, chroot+"/consumers", "")
 	if handlHTTPErr(c, err) {
 		return
 	}
@@ -71,7 +80,7 @@ func ZkListConsumers(c *gin.Context) {
 				topic = map[string]interface{}{}
 			}
 
-			data, _, err := conn.Get(chroot() + "/" + path)
+			data, _, err := zkClient.Get(chroot + "/" + path)
 			if handlHTTPErr(c, err) {
 				return
 			}

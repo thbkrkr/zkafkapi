@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -10,8 +12,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func Offsets(c *gin.Context) {
-	offsets, err := getOffsets()
+func BrokersLogSize(c *gin.Context) {
+	offsets, err := getBrokersLogSize(c)
 	if handlHTTPErr(c, err) {
 		return
 	}
@@ -27,7 +29,9 @@ type PartitionOffset struct {
 	TopicPartitionCount int
 }
 
-func getOffsets() (map[string]*PartitionOffset, error) {
+func getBrokersLogSize(c *gin.Context) (map[string]*PartitionOffset, error) {
+	client := c.MustGet("kafkaClient").(sarama.Client)
+
 	topicMap := map[string]int{}
 
 	topics, err := client.Topics()
@@ -100,4 +104,74 @@ func getOffsets() (map[string]*PartitionOffset, error) {
 	wg.Wait()
 
 	return offsets, nil
+}
+
+// --------
+
+type ConsumerOffset struct {
+	Topic         string
+	Partition     int32
+	Offset        int64
+	Timestamp     int64
+	ConsumerGroup string
+}
+
+func ConsumersOffsets(c *gin.Context) {
+	chroot, err := ZkChroot(c)
+	if err != nil {
+		return
+	}
+
+	paths, err := childrenRecursiveInternal(zkClient, chroot+"/consumers", "")
+	if handlHTTPErr(c, err) {
+		return
+	}
+
+	offsets := map[string]map[string]map[string]interface{}{}
+	var wg sync.WaitGroup
+	var mutex = sync.Mutex{}
+
+	for _, path := range paths {
+
+		go func() {
+
+			parts := strings.Split(path, "/")
+
+			// Skip if it's not an 'offset path' (e.g.: "topic/offsets/consumerGroup/partition")
+			if parts[1] != "offsets" || len(parts) != 4 {
+				continue
+			}
+
+			topicID := parts[0]
+			consumerGroupID := parts[2]
+			partitionSID := parts[3]
+
+			consumerGroup := offsets[consumerGroupID]
+			if consumerGroup == nil {
+				consumerGroup = map[string]map[string]interface{}{}
+			}
+
+			topic := consumerGroup[topicID]
+			if topic == nil {
+				topic = map[string]interface{}{}
+			}
+
+			data, _, err := zkClient.Get(chroot + "/consumers/" + path)
+			if handlHTTPErr(c, err) {
+				return
+			}
+			offsetNumber, err := strconv.ParseInt(string(data), 10, 32)
+			if handlHTTPErr(c, err) {
+				return
+			}
+
+			mutex.Lock()
+			topic[partitionSID] = int32(offsetNumber)
+			consumerGroup[topicID] = topic
+			offsets[consumerGroupID] = consumerGroup
+			mutex.Unlock()
+		}
+	}
+
+	c.JSON(200, offsets)
 }
