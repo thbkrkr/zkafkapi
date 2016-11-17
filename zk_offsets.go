@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"strconv"
 	"strings"
 	"sync"
@@ -9,15 +10,75 @@ import (
 	"github.com/samuel/go-zookeeper/zk"
 )
 
-func ZkConsumersOffsets(c *gin.Context) {
+func ZkListTopicsOffsets(c *gin.Context) {
 	zkConn := c.MustGet("zkConn").(*zk.Conn)
 
-	chroot, err := ZkChroot(c)
+	chroot, err := zkChroot(c)
+	if handlHTTPErr(c, err) {
+		return
+	}
+
+	paths, err := childrenRecursive(zkConn, chroot+"/brokers/topics", "")
+	if handlHTTPErr(c, err) {
+		return
+	}
+
+	wg := &sync.WaitGroup{}
+	mutex := &sync.Mutex{}
+
+	nb := 0
+	topics := map[string]map[string]interface{}{}
+	for _, p := range paths {
+		if strings.Contains(p, "/state") {
+			wg.Add(1)
+			nb++
+
+			go func(path string) {
+				defer wg.Done()
+
+				data, _, err := ZookyClient.Get(chroot + path)
+				if handlHTTPErr(c, err) {
+					return
+				}
+
+				var tp ZkTopicPartitionsOffsets
+				err = json.Unmarshal(data, &tp)
+				if handlHTTPErr(c, err) {
+					return
+				}
+
+				parts := strings.Split(path, "/")
+				topicID := parts[0]
+				partitionID := parts[2]
+
+				mutex.Lock()
+
+				topic := topics[topicID]
+				if topic == nil {
+					topic = map[string]interface{}{}
+				}
+				topic[partitionID] = tp
+				topics[topicID] = topic
+
+				mutex.Unlock()
+			}(p)
+		}
+	}
+
+	wg.Wait()
+
+	c.JSON(200, topics)
+}
+
+func ZkListConsumersOffsets(c *gin.Context) {
+	zkConn := c.MustGet("zkConn").(*zk.Conn)
+
+	chroot, err := zkChroot(c)
 	if err != nil {
 		return
 	}
 
-	paths, err := childrenRecursiveInternal(zkConn, chroot+"/consumers", "")
+	paths, err := childrenRecursive(zkConn, chroot+"/consumers", "")
 	if handlHTTPErr(c, err) {
 		return
 	}

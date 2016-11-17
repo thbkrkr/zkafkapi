@@ -17,6 +17,11 @@ import (
 func TopicMetrics(c *gin.Context) {
 	topic := c.Param("topic")
 
+	if conf.MetricsHost == "" {
+		c.JSON(503, "Service Unavailable")
+		return
+	}
+
 	metrics, err := getMetrics(conf.MetricsHost, conf.MetricsToken, topic, "3", "")
 	if handlHTTPErr(c, err) {
 		return

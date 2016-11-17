@@ -8,12 +8,32 @@ type ConsumerGroupsOffsetsLag struct {
 }
 
 type ConsumerOffsetsLag struct {
-	LogSize int64
-	Offset  int64
-	Lag     int64
+	LogSize   int64
+	Offset    int64
+	Lag       int64
+	Timestamp int64
 }
 
 func Lag(c *gin.Context) {
+	c.JSON(200, getLag())
+}
+
+func LagSummary(c *gin.Context) {
+	summary := map[string]map[string]int64{}
+
+	lag := getLag()
+	for topic := range lag {
+		summary[topic] = map[string]int64{}
+		for consumer := range lag[topic] {
+			col := lag[topic][consumer]
+			summary[topic][consumer] = col.Total.Lag
+		}
+	}
+
+	c.JSON(200, summary)
+}
+
+func getLag() map[string]map[string]*ConsumerGroupsOffsetsLag {
 	lag := map[string]map[string]*ConsumerGroupsOffsetsLag{}
 
 	consumersOffsetsMutex.RLock()
@@ -26,9 +46,10 @@ func Lag(c *gin.Context) {
 				topicsOffsetsMutex.RUnlock()
 
 				pLag := ConsumerOffsetsLag{
-					LogSize: logSize,
-					Offset:  consumerOffset,
-					Lag:     logSize - consumerOffset,
+					LogSize:   logSize.Value,
+					Offset:    consumerOffset.Value,
+					Lag:       logSize.Value - consumerOffset.Value,
+					Timestamp: logSize.Timestamp - consumerOffset.Timestamp,
 				}
 
 				tLag := lag[topic]
@@ -55,5 +76,5 @@ func Lag(c *gin.Context) {
 	}
 	consumersOffsetsMutex.RUnlock()
 
-	c.JSON(200, lag)
+	return lag
 }
