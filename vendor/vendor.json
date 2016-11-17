@@ -88,6 +88,12 @@
 			"revisionTime": "2016-02-19T14:26:09Z"
 		},
 		{
+			"checksumSHA1": "v8Sc9cvd74LAIgvMsYbpqXJieiY=",
+			"path": "github.com/linkedin/Burrow/protocol",
+			"revision": "1dc2fc70f7713b41cf063977375287bec8384714",
+			"revisionTime": "2016-09-02T13:04:25Z"
+		},
+		{
 			"checksumSHA1": "b0T0Hzd+zYk+OCDTFMps+jwa/nY=",
 			"path": "github.com/manucorporat/sse",
 			"revision": "ee05b128a739a0fb76c7ebd3ae4810c1de808d6d",

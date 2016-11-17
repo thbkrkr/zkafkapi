@@ -1,12 +1,8 @@
 package main
 
 import (
-	"errors"
 	"os"
-	"sync"
-	"time"
 
-	"github.com/Shopify/sarama"
 	log "github.com/Sirupsen/logrus"
 	"github.com/gin-gonic/gin"
 	"github.com/kelseyhightower/envconfig"
@@ -15,15 +11,24 @@ import (
 )
 
 var (
-	conf     Config
-	zkClient *zk.Conn
-
+	name      = "kafka-topics"
 	buildDate = "dev"
 	gitCommit = "dev"
-	name      = "kafka-topics"
+
+	conf Config
+
+	KafkyPort = "9092"
+	KafkaPort = "9091"
+	ZookyPort = "2181"
+	ZkPort    = "2182"
+
+	ZkClient    *zk.Conn
+	ZookyClient *zk.Conn
 )
 
 type Config struct {
+	AdminPassword string `envconfig:"A" required:"true"`
+
 	Broker string `envconfig:"B" required:"true"`
 	//Key    string `envconfig:"K" required:"true"`
 
@@ -34,8 +39,15 @@ type Config struct {
 func main() {
 	envConfig()
 
-	err := createZkClient()
+	var err error
+
+	ZkClient, err = CreateZkClient(ZkPort)
 	fatalErr(err)
+
+	ZookyClient, err = CreateZkClient(ZookyPort)
+	fatalErr(err)
+
+	go ProcessConsumerOffsetsMessage()
 
 	http.API(name, buildDate, gitCommit, router)
 }
@@ -52,15 +64,16 @@ func router(r *gin.Engine) {
 		c.JSON(200, []string{
 			" -- Kafka -- ",
 			"GET     /k/topics                 ListTopics",
-			"POST    /k/topics/:topic?p=3&r=2  CreateTopic",
 			"GET     /k/topics/:topic          GetTopic",
+			"POST    /k/topics/:topic?p=3&r=2  CreateTopic",
 			"PUT     /k/topics/:topic?p=6      UpdateTopic",
 			"DELETE  /k/topics/:topic          DeleteTopic",
 			"GET     /k/topics/:topic/metrics  TopicMetrics",
-			"GET     /k/brokers                BrokersLogSize",
-			"GET     /k/consumers              ConsumersOffsets",
+			"GET     /k/offsets          			 KafkaTopicsOffsets",
+			"GET     /k/t/:topic/c/:consumer   KafkaTopicConsumerOffsets",
 			" -- Zk -- ",
 			"GET     /z/topics                 ZkListTopics",
+			"GET     /z/topics/offsets         ZkListTopicsOffsets",
 			"GET     /z/consumers              ZkListConsumers",
 		})
 	})
@@ -69,19 +82,38 @@ func router(r *gin.Engine) {
 	a.Use(AuthRequired())
 
 	a.GET("/k/topics", ListTopics)
+	a.GET("/k/t", ListTopics)
+	a.GET("/k/topics/:topic", GetTopic)
+	a.GET("/k/t/:topic", GetTopic)
+	a.GET("/t/:topic", FullTopic)
 
 	a.POST("/k/topics/:topic", CreateTopic)
-	a.GET("/k/topics/:topic", GetTopic)
+	a.POST("/k/t/:topic", CreateTopic)
 	a.PUT("/k/topics/:topic", UpdateTopic)
+	a.PUT("/k/t/:topic", UpdateTopic)
 	a.DELETE("/k/topics/:topic", DeleteTopic)
+	a.DELETE("/k/t/:topic", DeleteTopic)
 
 	a.GET("/k/topics/:topic/metrics", TopicMetrics)
+	a.GET("/k/t/:topic/m", TopicMetrics)
 
-	a.GET("/k/brokers", BrokersLogSize)
-	a.GET("/k/consumers", ConsumersOffsets)
+	a.GET("/k/offsets", KafkaTopicsOffsets)
+	a.GET("/k/to", KafkaTopicsOffsets)
+	a.GET("/k/t/:topic/c/:consumer", KafkaTopicConsumerOffsets)
+	a.GET("/k/tc", KafkaTopicConsumersOffsets)
 
 	a.GET("/z/topics", ZkListTopics)
-	a.GET("/z/consumers", ZkListConsumers)
+	a.GET("/z/t", ZkListTopics)
+	a.GET("/z/topics/:topic", ZkGetTopic)
+	a.GET("/z/t/:topic", ZkGetTopic)
+	a.GET("/z/topics-offsets", ZkListTopicsOffsets)
+	a.GET("/z/to", ZkListTopicsOffsets)
+	a.DELETE("/z/topics/:topic", ZkDeleteTopic)
+	a.DELETE("/z/t/:topic", ZkDeleteTopic)
+	a.GET("/z/consumers", ZkConsumersOffsets)
+	a.GET("/z/c", ZkConsumersOffsets)
+
+	a.GET("/lag", Lag)
 }
 
 func AuthRequired() gin.HandlerFunc {
@@ -95,6 +127,15 @@ func AuthRequired() gin.HandlerFunc {
 				c.AbortWithStatus(500)
 			}
 			c.Set("kafkaClient", client)
+
+			var zkConn *zk.Conn
+			if key == conf.AdminPassword {
+				zkConn = ZkClient
+			} else {
+				zkConn = ZookyClient
+			}
+			c.Set("zkConn", zkConn)
+
 		} else {
 			c.AbortWithStatus(401)
 		}
@@ -106,63 +147,7 @@ func auth(key string) bool {
 	return key != ""
 }
 
-func ZkChroot(c *gin.Context) (string, error) {
-	key := c.Request.Header.Get("X-Auth")
-	if !auth(key) {
-		c.JSON(401, "Invalid key")
-		return "", errors.New("Invalid key")
-	}
-	return "/" + key, nil
-}
-
 // -------------
-
-var kafkaClients = map[string]sarama.Client{}
-var kafkaLock = sync.RWMutex{}
-
-var zkClients = map[string]*zk.Conn{}
-var zkLock = sync.RWMutex{}
-
-func KafkaClient(key string) (sarama.Client, error) {
-	kafkaLock.RLock()
-	kafkaClient := kafkaClients[key]
-	kafkaLock.RUnlock()
-
-	if kafkaClient == nil {
-		config := sarama.NewConfig()
-		config.ClientID = key
-		c, err := sarama.NewClient([]string{conf.Broker}, config)
-		if err != nil {
-			return nil, err
-		}
-
-		kafkaClient = c
-		kafkaLock.Lock()
-		kafkaClients[key] = c
-		kafkaLock.Unlock()
-	}
-
-	return kafkaClient, nil
-}
-
-func createZkClient() error {
-	c, _, err := zk.Connect([]string{zkURL()}, time.Second)
-	if err != nil {
-		return err
-	}
-
-	c.SetLogger(zkLogger{})
-
-	zkClient = c
-	return nil
-}
-
-func fatalErr(err error) {
-	if err != nil {
-		log.Error(err)
-		os.Exit(1)
-	}
-}
 
 func handlHTTPErr(c *gin.Context, err error) bool {
 	isErr := err != nil
@@ -170,4 +155,11 @@ func handlHTTPErr(c *gin.Context, err error) bool {
 		c.JSON(500, gin.H{"message": err.Error()})
 	}
 	return isErr
+}
+
+func fatalErr(err error) {
+	if err != nil {
+		log.Error(err)
+		os.Exit(1)
+	}
 }
