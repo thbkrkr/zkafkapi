@@ -17,7 +17,7 @@ docker run -d -p 4242:4242 \
   --net=host \
   --env-file .env \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  krkr/kafka-topics
+  krkr/zkafkapi
 ```
 
 ### API

@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	name      = "kafka-topics"
+	name      = "zkafkapi"
 	buildDate = "dev"
 	gitCommit = "dev"
 

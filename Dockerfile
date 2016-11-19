@@ -1,3 +1,5 @@
 FROM scratch
-COPY kafka-topics /kafka-topics
-ENTRYPOINT ["/kafka-topics"]
+
+COPY zkafkapi /zkafkapi
+
+ENTRYPOINT ["/zkafkapi"]
