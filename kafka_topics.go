@@ -30,7 +30,7 @@ func ListTopics(c *gin.Context) {
 	c.JSON(200, topics)
 }
 
-func GetTopic(c *gin.Context) {
+func GetTopicOffsets(c *gin.Context) {
 	client := c.MustGet("kafkaClient").(sarama.Client)
 	topicName := c.Param("topic")
 

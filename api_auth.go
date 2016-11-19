@@ -13,7 +13,7 @@ func AuthRequired() gin.HandlerFunc {
 		if auth(key) {
 			client, err := KafkaClient(key)
 			if err != nil {
-				log.WithError(err).Error("Fail to create Sarama client")
+				log.WithField("key", key).WithError(err).Error("Fail to create Kafka client")
 				c.AbortWithStatus(500)
 			}
 			c.Set("kafkaClient", client)
@@ -22,6 +22,13 @@ func AuthRequired() gin.HandlerFunc {
 			if key == conf.AdminPassword {
 				zkConn = ZkClient
 			} else {
+				if ZookyClient == nil {
+					ZookyClient, err = CreateZkClient(ZookyPort)
+					if err != nil {
+						log.WithField("key", key).WithError(err).Error("Fail to create Zk client")
+						c.AbortWithStatus(500)
+					}
+				}
 				zkConn = ZookyClient
 			}
 			c.Set("zkConn", zkConn)

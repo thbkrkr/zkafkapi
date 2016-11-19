@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"strconv"
 	"strings"
 	"sync"
@@ -10,15 +9,15 @@ import (
 	"github.com/samuel/go-zookeeper/zk"
 )
 
-func ZkListTopicsOffsets(c *gin.Context) {
+/*func ZkListConsumers(c *gin.Context) {
 	zkConn := c.MustGet("zkConn").(*zk.Conn)
 
 	chroot, err := zkChroot(c)
-	if handlHTTPErr(c, err) {
+	if err != nil {
 		return
 	}
 
-	paths, err := childrenRecursive(zkConn, chroot+"/brokers/topics", "")
+	paths, _, err := zkConn.Children(chroot + "/consumers")
 	if handlHTTPErr(c, err) {
 		return
 	}
@@ -26,49 +25,43 @@ func ZkListTopicsOffsets(c *gin.Context) {
 	wg := &sync.WaitGroup{}
 	mutex := &sync.Mutex{}
 
-	nb := 0
 	topics := map[string]map[string]interface{}{}
 	for _, p := range paths {
-		if strings.Contains(p, "/state") {
-			wg.Add(1)
-			nb++
+		wg.Add(1)
+		go func(path string) {
+			defer wg.Done()
 
-			go func(path string) {
-				defer wg.Done()
+			data, _, err := zkConn.Get(chroot + "/consumers/" + path)
+			if handlHTTPErr(c, err) {
+				return
+			}
 
-				data, _, err := ZookyClient.Get(chroot + path)
-				if handlHTTPErr(c, err) {
-					return
-				}
+			var tp ZkTopic
+			err = json.Unmarshal(data, &tp)
+			if handlHTTPErr(c, err) {
+				return
+			}
 
-				var tp ZkTopicPartitionsOffsets
-				err = json.Unmarshal(data, &tp)
-				if handlHTTPErr(c, err) {
-					return
-				}
+			parts := strings.Split(path, "/")
+			topicID := parts[0]
+			partitionID := parts[2]
 
-				parts := strings.Split(path, "/")
-				topicID := parts[0]
-				partitionID := parts[2]
+			mutex.Lock()
 
-				mutex.Lock()
+			topic := topics[topicID]
+			if topic == nil {
+				topic = map[string]interface{}{}
+			}
+			topic[partitionID] = tp
+			topics[topicID] = topic
 
-				topic := topics[topicID]
-				if topic == nil {
-					topic = map[string]interface{}{}
-				}
-				topic[partitionID] = tp
-				topics[topicID] = topic
-
-				mutex.Unlock()
-			}(p)
-		}
+			mutex.Unlock()
+		}(p)
 	}
-
 	wg.Wait()
 
-	c.JSON(200, topics)
-}
+	c.JSON(200, paths)
+}*/
 
 func ZkListConsumersOffsets(c *gin.Context) {
 	zkConn := c.MustGet("zkConn").(*zk.Conn)
@@ -99,7 +92,7 @@ func ZkListConsumersOffsets(c *gin.Context) {
 		go func(path string) {
 			defer wg.Done()
 
-			data, _, err := ZookyClient.Get(chroot + "/consumers/" + path)
+			data, _, err := zkConn.Get(chroot + "/consumers/" + path)
 			if handlHTTPErr(c, err) {
 				return
 			}

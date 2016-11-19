@@ -31,6 +31,7 @@ const (
 type Config struct {
 	AdminPassword string `envconfig:"A" required:"true"`
 	Broker        string `envconfig:"B" default:"localhost:9092"`
+	Proxy         bool   `envconfig:"P" default:"false"`
 
 	MetricsHost  string `envconfig:"METRICS_HOST"`
 	MetricsToken string `envconfig:"METRICS_TOKEN"`
@@ -42,9 +43,6 @@ func main() {
 	var err error
 
 	ZkClient, err = CreateZkClient(ZkPort)
-	fatalErr(err)
-
-	ZookyClient, err = CreateZkClient(ZookyPort)
 	fatalErr(err)
 
 	go FetchOffsets()
@@ -64,21 +62,23 @@ func router(r *gin.Engine) {
 		c.JSON(200, []string{
 			" -- Kafka -- ",
 			"GET     /k/topics                 ListTopics",
-			"GET     /k/topics/:topic          GetTopic",
+			"GET     /k/topics/:topic          GetTopicOffsets",
 			"GET     /topics/:topic            FullTopic",
 			"POST    /k/topics/:topic?p=3&r=2  CreateTopic",
 			"PUT     /k/topics/:topic?p=6      UpdateTopic",
 			"DELETE  /k/topics/:topic          DeleteTopic",
-			"GET     /k/offsets                KafkaListTopicsOffsets",
+			"GET     /k/offsets/topics         KafkaListTopicsOffsets",
+			"GET     /k/offsets/consumers      KafkaListConsumersOffsets",
+			"GET     /k/consumers              KafkaListConsumers",
 			"GET     /k/t/:topic/c/:consumer   KafkaListConsumerOffsets",
 			" -- Zk -- ",
 			"GET     /z/topics                 ZkListTopics",
-			"GET     /z/topics/:topic          ZkGetTopic",
-			"GET     /z/offsets                ZkListTopicsOffsets",
+			"GET     /z/topics/:topic          ZkGetTopicPartitions",
+			"GET     /z/partitions             ZkListTopicsPartitions",
 			"GET     /z/consumers              ZkListConsumersOffsets",
 			" -- Lag --",
 			"GET     /lag                      Lag",
-			"GET     /lag/status               LagSummary",
+			"GET     /lag/status               LagStatus",
 			" -- Metrics --",
 			"GET     /k/topics/:topic/metrics  TopicMetrics",
 		})
@@ -88,26 +88,28 @@ func router(r *gin.Engine) {
 	a.Use(AuthRequired())
 
 	a.GET("/k/topics", ListTopics)
-	a.GET("/k/topics/:topic", GetTopic)
+	a.GET("/k/topics/:topic", GetTopicOffsets)
 	a.GET("/topics/:topic", FullTopic)
 
 	a.POST("/k/topics/:topic", CreateTopic)
 	a.PUT("/k/topics/:topic", UpdateTopic)
 	a.DELETE("/k/topics/:topic", DeleteTopic)
 
-	a.GET("/k/offsets", KafkaListTopicsOffsets)
+	a.GET("/k/offsets/topics", KafkaListTopicsOffsets)
+	a.GET("/k/offsets/consumers", KafkaListConsumersOffsets)
+	a.GET("/k/consumers", KafkaListConsumers)
 	a.GET("/k/t/:topic/c/:consumer", KafkaListConsumerOffsets)
 
 	a.GET("/z/topics", ZkListTopics)
-	a.GET("/z/topics/:topic", ZkGetTopic)
+	a.GET("/z/topics/:topic", ZkGetTopicPartitions)
+
+	a.GET("/z/partitions", ZkListTopicsPartitions)
+	a.GET("/z/consumers", ZkListConsumersOffsets)
 
 	a.DELETE("/z/topics/:topic", ZkDeleteTopic)
 
-	a.GET("/z/offsets", ZkListTopicsOffsets)
-	a.GET("/z/consumers", ZkListConsumersOffsets)
-
 	a.GET("/lag", Lag)
-	a.GET("/lag/status", LagSummary)
+	a.GET("/lag/status", LagStatus)
 
 	a.GET("/k/topics/:topic/metrics", TopicMetrics)
 }
@@ -115,6 +117,7 @@ func router(r *gin.Engine) {
 func handlHTTPErr(c *gin.Context, err error) bool {
 	isErr := err != nil
 	if isErr {
+		log.WithError(err).Error("HTTP error")
 		c.JSON(500, gin.H{"message": err.Error()})
 	}
 	return isErr

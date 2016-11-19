@@ -18,15 +18,28 @@ func Lag(c *gin.Context) {
 	c.JSON(200, getLag())
 }
 
-func LagSummary(c *gin.Context) {
-	summary := map[string]map[string]int64{}
+type LagState struct {
+	Lag    int64
+	Status string
+}
 
-	lag := getLag()
-	for topic := range lag {
-		summary[topic] = map[string]int64{}
-		for consumer := range lag[topic] {
-			col := lag[topic][consumer]
-			summary[topic][consumer] = col.Total.Lag
+func LagStatus(c *gin.Context) {
+	summary := map[string]map[string]LagState{}
+
+	lags := getLag()
+	for topic := range lags {
+		summary[topic] = map[string]LagState{}
+		for consumer := range lags[topic] {
+			lag := lags[topic][consumer].Total.Lag
+			ts := lags[topic][consumer].Total.Timestamp
+			status := "ERROR"
+			if ts < 30000 && ts > -30000 && lag < 1000 {
+				status = "OK"
+			}
+			summary[topic][consumer] = LagState{
+				Lag:    lag,
+				Status: status,
+			}
 		}
 	}
 
@@ -37,12 +50,12 @@ func getLag() map[string]map[string]*ConsumerGroupsOffsetsLag {
 	lag := map[string]map[string]*ConsumerGroupsOffsetsLag{}
 
 	consumersOffsetsMutex.RLock()
-	for topic, _ := range consumerTopicsOffsets {
-		for consumer, _ := range consumerTopicsOffsets[topic] {
-			for partition, consumerOffset := range consumerTopicsOffsets[topic][consumer] {
+	for topic, _ := range ConsumersTopicsOffsets {
+		for consumer, _ := range ConsumersTopicsOffsets[topic] {
+			for partition, consumerOffset := range ConsumersTopicsOffsets[topic][consumer] {
 
 				topicsOffsetsMutex.RLock()
-				logSize := topicsOffsets[topic][partition]
+				logSize := TopicsOffsets[topic][partition]
 				topicsOffsetsMutex.RUnlock()
 
 				pLag := ConsumerOffsetsLag{

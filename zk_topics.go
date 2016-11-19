@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"strings"
 	"sync"
 
 	log "github.com/Sirupsen/logrus"
@@ -10,12 +9,12 @@ import (
 	"github.com/samuel/go-zookeeper/zk"
 )
 
-type ZkTopicPartitionsOffsets struct {
+type ZkTopic struct {
 	Name       string
 	Partitions map[string][]int32
 }
 
-type ZkTopicPartitionning struct {
+type ZkTopicPartition struct {
 	Leader int32   `json:"leader"`
 	Isr    []int32 `json:"isr"`
 }
@@ -28,7 +27,6 @@ func ZkListTopics(c *gin.Context) {
 		return
 	}
 
-	log.Info("zk: ls " + chroot + "/brokers/topics")
 	topicNames, _, err := zkConn.Children(chroot + "/brokers/topics")
 	if handlHTTPErr(c, err) {
 		return
@@ -37,7 +35,47 @@ func ZkListTopics(c *gin.Context) {
 	c.JSON(200, topicNames)
 }
 
-func ZkGetTopic(c *gin.Context) {
+func ZkListTopicsPartitions(c *gin.Context) {
+	zkConn := c.MustGet("zkConn").(*zk.Conn)
+
+	chroot, err := zkChroot(c)
+	if handlHTTPErr(c, err) {
+		return
+	}
+
+	topicNames, _, err := zkConn.Children(chroot + "/brokers/topics")
+	if handlHTTPErr(c, err) {
+		return
+	}
+
+	wg := &sync.WaitGroup{}
+	mutex := &sync.Mutex{}
+	topics := []ZkTopic{}
+
+	for _, topicName := range topicNames {
+		wg.Add(1)
+
+		go func(name string) {
+			defer wg.Done()
+
+			topic, err := getZkTopic(zkConn, chroot, name)
+			if err != nil {
+				log.WithField("topic", name).Error("Fail to get zk topics")
+				return
+			}
+
+			mutex.Lock()
+			topics = append(topics, *topic)
+			mutex.Unlock()
+
+		}(topicName)
+	}
+	wg.Wait()
+
+	c.JSON(200, topics)
+}
+
+func ZkGetTopicPartitions(c *gin.Context) {
 	zkConn := c.MustGet("zkConn").(*zk.Conn)
 	topicName := c.Param("topic")
 
@@ -54,13 +92,13 @@ func ZkGetTopic(c *gin.Context) {
 	c.JSON(200, zkTopic)
 }
 
-func getZkTopic(zkConn *zk.Conn, chroot string, topicName string) (*ZkTopicPartitionsOffsets, error) {
+func getZkTopic(zkConn *zk.Conn, chroot string, topicName string) (*ZkTopic, error) {
 	data, _, err := zkConn.Get(chroot + "/brokers/topics/" + topicName)
 	if err != nil {
 		return nil, err
 	}
 
-	var zkTopic ZkTopicPartitionsOffsets
+	var zkTopic ZkTopic
 	err = json.Unmarshal(data, &zkTopic)
 	if err != nil {
 		return nil, err
@@ -70,69 +108,12 @@ func getZkTopic(zkConn *zk.Conn, chroot string, topicName string) (*ZkTopicParti
 	return &zkTopic, nil
 }
 
-func ZkListConsumers(c *gin.Context) {
-	zkConn := c.MustGet("zkConn").(*zk.Conn)
-
-	chroot, err := zkChroot(c)
-	if err != nil {
-		return
-	}
-
-	paths, _, err := zkConn.Children(chroot + "/consumers")
-	if handlHTTPErr(c, err) {
-		return
-	}
-
-	wg := &sync.WaitGroup{}
-	mutex := &sync.Mutex{}
-
-	topics := map[string]map[string]interface{}{}
-	for _, p := range paths {
-		wg.Add(1)
-		go func(path string) {
-			defer wg.Done()
-
-			data, _, err := zkConn.Get(chroot + "/consumers/" + path)
-			if handlHTTPErr(c, err) {
-				return
-			}
-
-			var tp ZkTopicPartitionsOffsets
-			err = json.Unmarshal(data, &tp)
-			if handlHTTPErr(c, err) {
-				return
-			}
-
-			parts := strings.Split(path, "/")
-			topicID := parts[0]
-			partitionID := parts[2]
-
-			mutex.Lock()
-
-			topic := topics[topicID]
-			if topic == nil {
-				topic = map[string]interface{}{}
-			}
-			topic[partitionID] = tp
-			topics[topicID] = topic
-
-			mutex.Unlock()
-		}(p)
-	}
-	wg.Wait()
-
-	c.JSON(200, paths)
-}
-
 func ZkDeleteTopic(c *gin.Context) {
-	zkConn := c.MustGet("zkConn").(*zk.Conn)
-
-	// TODO: Auth
-	_, err := zkChroot(c)
-	if err != nil {
+	if IsNotAdmin(c) {
 		return
 	}
 
+	zkConn := c.MustGet("zkConn").(*zk.Conn)
 	topic := c.Param("topic")
 
 	res, err := zkConn.Create("/admin/delete_topics/"+topic, []byte(""), 0, zk.WorldACL(zk.PermAll))
@@ -141,4 +122,13 @@ func ZkDeleteTopic(c *gin.Context) {
 	}
 
 	c.JSON(200, res)
+}
+
+func IsNotAdmin(c *gin.Context) bool {
+	key := c.Request.Header.Get("X-Auth")
+	isNotAdmin := key != conf.AdminPassword
+	if isNotAdmin {
+		c.JSON(403, "Restricted area")
+	}
+	return isNotAdmin
 }

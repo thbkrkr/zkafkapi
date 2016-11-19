@@ -14,12 +14,17 @@ import (
 )
 
 var (
+	BrokersTopicsOffsetsInterval = 20 * time.Second
+
 	offsetsChannel = make(chan *protocol.PartitionOffset)
 	messageChannel = make(chan *sarama.ConsumerMessage)
 	errorChannel   = make(chan *sarama.ConsumerError)
 
-	consumerTopicsOffsets = map[string]map[string]map[int32]Offset{}
-	consumersOffsetsMutex = &sync.RWMutex{}
+	ConsumersTopicsOffsets = map[string]map[string]map[int32]Offset{}
+	consumersOffsetsMutex  = &sync.RWMutex{}
+
+	TopicsOffsets      = map[string]map[int32]Offset{}
+	topicsOffsetsMutex = &sync.RWMutex{}
 )
 
 func FetchOffsets() {
@@ -28,7 +33,7 @@ func FetchOffsets() {
 
 	// Get topics offset in background every tick
 
-	tick := 20 * time.Second
+	tick := BrokersTopicsOffsetsInterval
 
 	offsets, err := getTopicsOffsets(client)
 	if err != nil {
@@ -36,20 +41,20 @@ func FetchOffsets() {
 	}
 
 	topicsOffsetsMutex.Lock()
-	topicsOffsets = offsets
+	TopicsOffsets = offsets
 	topicsOffsetsMutex.Unlock()
 
 	go func() {
 		for range time.Tick(tick) {
 			var err error
 
-			offsets, err := getTopicsOffsets(client)
+			offs, err := getTopicsOffsets(client)
 			if err != nil {
 				log.WithError(err).Error("Fail to get topics offsets")
 			}
 
 			topicsOffsetsMutex.Lock()
-			topicsOffsets = offsets
+			TopicsOffsets = offs
 			topicsOffsetsMutex.Unlock()
 		}
 	}()
@@ -104,7 +109,7 @@ func FetchOffsets() {
 		for offset := range offsetsChannel {
 			consumersOffsetsMutex.Lock()
 
-			topic := consumerTopicsOffsets[offset.Topic]
+			topic := ConsumersTopicsOffsets[offset.Topic]
 			if topic == nil {
 				topic = map[string]map[int32]Offset{}
 			}
@@ -115,7 +120,7 @@ func FetchOffsets() {
 			consumer[offset.Partition] = Offset{Value: offset.Offset, Timestamp: offset.Timestamp}
 
 			topic[offset.Group] = consumer
-			consumerTopicsOffsets[offset.Topic] = topic
+			ConsumersTopicsOffsets[offset.Topic] = topic
 
 			consumersOffsetsMutex.Unlock()
 		}
@@ -126,7 +131,7 @@ func KafkaTopicConsumersOffsets(c *gin.Context) {
 	consumersOffsetsMutex.RLock()
 	defer consumersOffsetsMutex.RUnlock()
 
-	c.JSON(200, consumerTopicsOffsets)
+	c.JSON(200, ConsumersTopicsOffsets)
 }
 
 func processConsumerOffsetsMessage(msg *sarama.ConsumerMessage) {

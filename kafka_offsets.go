@@ -9,17 +9,16 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-var (
-	topicsOffsets      = map[string]map[int32]Offset{}
-	topicsOffsetsMutex = &sync.RWMutex{}
-)
-
 type Offset struct {
 	Value     int64
 	Timestamp int64
 }
 
 func KafkaListTopicsOffsets(c *gin.Context) {
+	if IsNotAdmin(c) {
+		return
+	}
+
 	client := c.MustGet("kafkaClient").(sarama.Client)
 
 	offsets, err := getTopicsOffsets(client)
@@ -106,56 +105,4 @@ func getTopicsOffsets(client sarama.Client) (map[string]map[int32]Offset, error)
 	wg.Wait()
 
 	return offsets, nil
-}
-
-func KafkaListConsumerOffsets(c *gin.Context) {
-	client := c.MustGet("kafkaClient").(sarama.Client)
-	topic := c.Param("topic")
-	consumerGroupID := c.Param("consumer")
-
-	consumersOffsets, err := getConsumerOffsets(client, topic, consumerGroupID)
-	if handlHTTPErr(c, err) {
-		return
-	}
-
-	c.JSON(200, consumersOffsets)
-}
-
-func getConsumerOffsets(client sarama.Client, topic string, consumerGroupID string) (map[int32]interface{}, error) {
-	consumersOffsets := map[int32]interface{}{}
-	wg := &sync.WaitGroup{}
-	mutex := &sync.Mutex{}
-
-	offsetManager, err := sarama.NewOffsetManagerFromClient(consumerGroupID, client)
-	if err != nil {
-		return nil, err
-	}
-
-	partitions, err := client.Partitions(topic)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, p := range partitions {
-		wg.Add(1)
-		go func(partition int32) {
-			defer wg.Done()
-
-			brokerPartitionOffsetManager, err := offsetManager.ManagePartition(topic, partition)
-			if err != nil {
-				log.WithError(err).Fatal("Fail to manage partition")
-			}
-			defer brokerPartitionOffsetManager.AsyncClose()
-
-			offset, _ := brokerPartitionOffsetManager.NextOffset()
-
-			mutex.Lock()
-			consumersOffsets[partition] = offset
-			mutex.Unlock()
-
-		}(p)
-	}
-	wg.Wait()
-
-	return consumersOffsets, nil
 }
