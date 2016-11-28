@@ -20,14 +20,14 @@ var (
 	messageChannel = make(chan *sarama.ConsumerMessage)
 	errorChannel   = make(chan *sarama.ConsumerError)
 
-	ConsumersTopicsOffsets = map[string]map[string]map[int32]Offset{}
+	ConsumersTopicsOffsets = map[string]map[string]map[int32]PartitionOffset{}
 	consumersOffsetsMutex  = &sync.RWMutex{}
 
-	TopicsOffsets      = map[string]map[int32]Offset{}
+	TopicsOffsets      = map[string]map[int32]PartitionOffset{}
 	topicsOffsetsMutex = &sync.RWMutex{}
 )
 
-func FetchOffsets() {
+func FetchTopicsOffsetsAndConsumeConsumerOffsets() {
 	client, err := KafkaClient(conf.AdminPassword)
 	fatalErr(err)
 
@@ -35,7 +35,7 @@ func FetchOffsets() {
 
 	tick := BrokersTopicsOffsetsInterval
 
-	offsets, err := getTopicsOffsets(client)
+	offsets, err := getAllTopicsOffsets(client)
 	if err != nil {
 		log.WithError(err).Error("Fail to get topics offsets")
 	}
@@ -48,7 +48,7 @@ func FetchOffsets() {
 		for range time.Tick(tick) {
 			var err error
 
-			offs, err := getTopicsOffsets(client)
+			offs, err := getAllTopicsOffsets(client)
 			if err != nil {
 				log.WithError(err).Error("Fail to get topics offsets")
 			}
@@ -59,7 +59,7 @@ func FetchOffsets() {
 		}
 	}()
 
-	// Get offset coonsumers for the consumption topic
+	// Get offset consumers for the consumption topic
 
 	offsetsTopic := "__consumer_offsets"
 
@@ -111,13 +111,13 @@ func FetchOffsets() {
 
 			topic := ConsumersTopicsOffsets[offset.Topic]
 			if topic == nil {
-				topic = map[string]map[int32]Offset{}
+				topic = map[string]map[int32]PartitionOffset{}
 			}
 			consumer := topic[offset.Group]
 			if consumer == nil {
-				consumer = map[int32]Offset{}
+				consumer = map[int32]PartitionOffset{}
 			}
-			consumer[offset.Partition] = Offset{Value: offset.Offset, Timestamp: offset.Timestamp}
+			consumer[offset.Partition] = PartitionOffset{Value: offset.Offset, Timestamp: offset.Timestamp}
 
 			topic[offset.Group] = consumer
 			ConsumersTopicsOffsets[offset.Topic] = topic

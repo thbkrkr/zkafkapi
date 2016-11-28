@@ -3,11 +3,11 @@ package main
 import "github.com/gin-gonic/gin"
 
 type ConsumerGroupsOffsetsLag struct {
-	Total      ConsumerOffsetsLag
-	Partitions map[int32]ConsumerOffsetsLag
+	Total      ConsumerLag
+	Partitions map[int32]ConsumerLag
 }
 
-type ConsumerOffsetsLag struct {
+type ConsumerLag struct {
 	LogSize   int64
 	Offset    int64
 	Lag       int64
@@ -23,7 +23,7 @@ type LagState struct {
 	Status string
 }
 
-func LagStatus(c *gin.Context) {
+func LagSummary(c *gin.Context) {
 	summary := map[string]map[string]LagState{}
 
 	lags := getLag()
@@ -58,7 +58,7 @@ func getLag() map[string]map[string]*ConsumerGroupsOffsetsLag {
 				logSize := TopicsOffsets[topic][partition]
 				topicsOffsetsMutex.RUnlock()
 
-				pLag := ConsumerOffsetsLag{
+				pLag := ConsumerLag{
 					LogSize:   logSize.Value,
 					Offset:    consumerOffset.Value,
 					Lag:       logSize.Value - consumerOffset.Value,
@@ -73,8 +73,8 @@ func getLag() map[string]map[string]*ConsumerGroupsOffsetsLag {
 				cLag := tLag[consumer]
 				if cLag == nil {
 					cLag = &ConsumerGroupsOffsetsLag{
-						Total:      ConsumerOffsetsLag{},
-						Partitions: map[int32]ConsumerOffsetsLag{},
+						Total:      ConsumerLag{},
+						Partitions: map[int32]ConsumerLag{},
 					}
 				}
 

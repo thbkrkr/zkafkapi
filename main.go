@@ -45,7 +45,7 @@ func main() {
 	ZkClient, err = CreateZkClient(ZkPort)
 	fatalErr(err)
 
-	go FetchOffsets()
+	go FetchTopicsOffsetsAndConsumeConsumerOffsets()
 
 	http.API(name, buildDate, gitCommit, router)
 }
@@ -60,58 +60,54 @@ func envConfig() {
 func router(r *gin.Engine) {
 	r.GET("/help", func(c *gin.Context) {
 		c.JSON(200, []string{
-			" -- Kafka -- ",
-			"GET     /k/topics                 ListTopics",
-			"GET     /k/topics/:topic          GetTopicOffsets",
-			"GET     /topics/:topic            FullTopic",
-			"POST    /k/topics/:topic?p=3&r=2  CreateTopic",
-			"PUT     /k/topics/:topic?p=6      UpdateTopic",
-			"DELETE  /k/topics/:topic          DeleteTopic",
-			"GET     /k/offsets/topics         KafkaListTopicsOffsets",
-			"GET     /k/offsets/consumers      KafkaListConsumersOffsets",
-			"GET     /k/consumers              KafkaListConsumers",
-			"GET     /k/t/:topic/c/:consumer   KafkaListConsumerOffsets",
-			" -- Zk -- ",
-			"GET     /z/topics                 ZkListTopics",
-			"GET     /z/topics/:topic          ZkGetTopicPartitions",
-			"GET     /z/partitions             ZkListTopicsPartitions",
-			"GET     /z/consumers              ZkListConsumersOffsets",
+			" -- Topics -- ",
+			"GET     /topics               ListTopics",
+			"GET     /topics/:topic        GetTopic",
+			"POST    /topics/:topic        CreateTopic",
+			"PUT     /topics/:topic        UpdateTopic",
+			"DELETE  /topics/:topic        DeleteTopic",
+			" -- Consumers -- ",
+			"GET     /consumers            ListConsumers",
+			"GET     /consumers/:consumer  GetConsumer",
 			" -- Lag --",
-			"GET     /lag                      Lag",
-			"GET     /lag/status               LagStatus",
-			" -- Metrics --",
-			"GET     /k/topics/:topic/metrics  TopicMetrics",
+			"GET     /lag                  Lag",
 		})
 	})
 
 	a := r.Group("/")
 	a.Use(AuthRequired())
 
-	a.GET("/k/topics", ListTopics)
-	a.GET("/k/topics/:topic", GetTopicOffsets)
-	a.GET("/topics/:topic", FullTopic)
+	// -- Topics
+	a.GET("/topics", ZkListTopics)
+	a.GET("/topics/:topic", GetTopic)
+	a.POST("/topics/:topic", CreateTopic)
+	a.PUT("/topics/:topic", UpdateTopic)
+	a.DELETE("/topics/:topic", DeleteTopic)
 
-	a.POST("/k/topics/:topic", CreateTopic)
-	a.PUT("/k/topics/:topic", UpdateTopic)
-	a.DELETE("/k/topics/:topic", DeleteTopic)
+	// -- Consumers
+	a.GET("/consumers", KafkaListConsumers)
+	a.GET("/consumers/:consumer", KafkaGetConsumer)
 
-	a.GET("/k/offsets/topics", KafkaListTopicsOffsets)
-	a.GET("/k/offsets/consumers", KafkaListConsumersOffsets)
+	// -- Lag
+	a.GET("/lag", LagSummary)
+	a.GET("/lag/full", Lag)
+
+	// -- Kafka
+	a.GET("/k/topics", KafkaListTopics)
+	a.GET("/k/topics/:topic", KafkaGetTopicOffsets)
+	a.GET("/k/offsets/topics", KafkaListAllTopicsOffsets)
+	a.GET("/k/offsets/consumers", KafkaListAllConsumersOffsets)
 	a.GET("/k/consumers", KafkaListConsumers)
-	a.GET("/k/t/:topic/c/:consumer", KafkaListConsumerOffsets)
+	a.GET("/k/t/:topic/c/:consumer", KafkaListTopicConsumerOffsets)
 
+	// -- Zk
 	a.GET("/z/topics", ZkListTopics)
 	a.GET("/z/topics/:topic", ZkGetTopicPartitions)
-
 	a.GET("/z/partitions", ZkListTopicsPartitions)
 	a.GET("/z/consumers", ZkListConsumersOffsets)
-
 	a.DELETE("/z/topics/:topic", ZkDeleteTopic)
 
-	a.GET("/lag", Lag)
-	a.GET("/lag/status", LagStatus)
-
-	a.GET("/k/topics/:topic/metrics", TopicMetrics)
+	a.GET("/topics/:topic/metrics", TopicMetrics)
 }
 
 func handlHTTPErr(c *gin.Context, err error) bool {

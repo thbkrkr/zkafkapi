@@ -58,7 +58,7 @@ func ZkListTopicsPartitions(c *gin.Context) {
 		go func(name string) {
 			defer wg.Done()
 
-			topic, err := getZkTopic(zkConn, chroot, name)
+			topic, err := getZkTopicPartitions(zkConn, chroot, name)
 			if err != nil {
 				log.WithField("topic", name).Error("Fail to get zk topics")
 				return
@@ -84,7 +84,7 @@ func ZkGetTopicPartitions(c *gin.Context) {
 		return
 	}
 
-	zkTopic, err := getZkTopic(zkConn, chroot, topicName)
+	zkTopic, err := getZkTopicPartitions(zkConn, chroot, topicName)
 	if handlHTTPErr(c, err) {
 		return
 	}
@@ -92,7 +92,7 @@ func ZkGetTopicPartitions(c *gin.Context) {
 	c.JSON(200, zkTopic)
 }
 
-func getZkTopic(zkConn *zk.Conn, chroot string, topicName string) (*ZkTopic, error) {
+func getZkTopicPartitions(zkConn *zk.Conn, chroot string, topicName string) (*ZkTopic, error) {
 	data, _, err := zkConn.Get(chroot + "/brokers/topics/" + topicName)
 	if err != nil {
 		return nil, err

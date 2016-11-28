@@ -6,7 +6,7 @@ import (
 	"github.com/samuel/go-zookeeper/zk"
 )
 
-func FullTopic(c *gin.Context) {
+func GetTopic(c *gin.Context) {
 	client := c.MustGet("kafkaClient").(sarama.Client)
 	zkConn := c.MustGet("zkConn").(*zk.Conn)
 	topicName := c.Param("topic")
@@ -16,12 +16,12 @@ func FullTopic(c *gin.Context) {
 		return
 	}
 
-	zkTopic, err := getZkTopic(zkConn, chroot, topicName)
+	zkTopic, err := getZkTopicPartitions(zkConn, chroot, topicName)
 	if handlHTTPErr(c, err) {
 		return
 	}
 
-	topic, err := getTopic(client, topicName)
+	topic, err := getKafkaTopicOffsets(client, topicName)
 	if handlHTTPErr(c, err) {
 		return
 	}

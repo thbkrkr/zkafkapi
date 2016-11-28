@@ -18,14 +18,10 @@ func KafkaListConsumers(c *gin.Context) {
 		return
 	}
 
-	c.MustGet("kafkaClient")
-
 	consumersOffsetsMutex.RLock()
-	co := ConsumersTopicsOffsets
-	consumersOffsetsMutex.RUnlock()
 
 	consumers := []ConsumerGroup{}
-	for topicName, consumersOffsets := range co {
+	for topicName, consumersOffsets := range ConsumersTopicsOffsets {
 		for consumerName, offsets := range consumersOffsets {
 			consumer := ConsumerGroup{
 				Name:   consumerName,
@@ -43,10 +39,58 @@ func KafkaListConsumers(c *gin.Context) {
 		}
 	}
 
+	consumersOffsetsMutex.RUnlock()
+
 	c.JSON(200, consumers)
 }
 
-func KafkaListConsumersOffsets(c *gin.Context) {
+func KafkaGetConsumer(c *gin.Context) {
+	consumerName := c.Param("consumer")
+
+	if IsNotAdmin(c) {
+		return
+	}
+
+	consumersOffsetsMutex.RLock()
+
+	consumers := []ConsumerGroup{}
+	for topicName, consumersOffsets := range ConsumersTopicsOffsets {
+		for name, offsets := range consumersOffsets {
+			consumer := ConsumerGroup{
+				Name:   name,
+				Topics: map[string][]int32{},
+			}
+			partitions := consumer.Topics[topicName]
+			if partitions == nil {
+				partitions = []int32{}
+			}
+			for partition, _ := range offsets {
+				partitions = append(partitions, partition)
+			}
+			consumer.Topics[topicName] = partitions
+			consumers = append(consumers, consumer)
+		}
+	}
+
+	consumersOffsetsMutex.RUnlock()
+
+	var consumer *ConsumerGroup
+	for _, c := range consumers {
+		if c.Name == consumerName {
+			consumer = &c
+			break
+		}
+	}
+
+	if consumer == nil {
+		c.JSON(404, gin.H{"message": "consumer not found"})
+		return
+	}
+
+	c.JSON(200, consumer)
+}
+
+func KafkaListAllConsumersOffsets(c *gin.Context) {
 	if IsNotAdmin(c) {
 		return
 	}
@@ -57,12 +101,13 @@ func KafkaListConsumersOffsets(c *gin.Context) {
 	c.JSON(200, ConsumersTopicsOffsets)
 }
 
-func KafkaListConsumerOffsets(c *gin.Context) {
-	client := c.MustGet("kafkaClient").(sarama.Client)
+func KafkaListTopicConsumerOffsets(c *gin.Context) {
 	topic := c.Param("topic")
 	consumerGroupID := c.Param("consumer")
 
-	consumersOffsets, err := getConsumerOffsets(client, topic, consumerGroupID)
+	client := c.MustGet("kafkaClient").(sarama.Client)
+
+	consumersOffsets, err := getKafkaConsumerOffsets(client, topic, consumerGroupID)
 	if handlHTTPErr(c, err) {
 		return
 	}
@@ -70,7 +115,7 @@ func KafkaListConsumerOffsets(c *gin.Context) {
 	c.JSON(200, consumersOffsets)
 }
 
-func getConsumerOffsets(client sarama.Client, topic string, consumerGroupID string) (map[int32]interface{}, error) {
+func getKafkaConsumerOffsets(client sarama.Client, topic string, consumerGroupID string) (map[int32]interface{}, error) {
 	consumersOffsets := map[int32]interface{}{}
 	wg := &sync.WaitGroup{}
 	mutex := &sync.Mutex{}
