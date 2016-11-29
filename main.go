@@ -22,10 +22,11 @@ var (
 )
 
 const (
-	KafkyPort = "9092"
-	KafkaPort = "9091"
-	ZookyPort = "2181"
-	ZkPort    = "2182"
+	KafkaTLSPort = "9093"
+	KafkyPort    = "9092"
+	KafkaPort    = "9091"
+	ZookyPort    = "2181"
+	ZkPort       = "2182"
 )
 
 type Config struct {

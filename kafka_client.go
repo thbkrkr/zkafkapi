@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 
@@ -21,7 +22,9 @@ func KafkaClient(key string) (sarama.Client, error) {
 
 	if kafkaClient == nil {
 		config := sarama.NewConfig()
+
 		config.ClientID = key
+
 		c, err := sarama.NewClient([]string{brokerURL}, config)
 		if err != nil {
 			return nil, err
@@ -36,6 +39,39 @@ func KafkaClient(key string) (sarama.Client, error) {
 	return kafkaClient, nil
 }
 
+func KafkaSSLSASLClient(user string, password string) (sarama.Client, error) {
+	brokerURL := kafkaTLSURL()
+
+	kafkaLock.RLock()
+	kafkaClient := kafkaClients[user]
+	kafkaLock.RUnlock()
+
+	if kafkaClient == nil {
+		config := sarama.NewConfig()
+
+		fmt.Println(brokerURL)
+		fmt.Println(user)
+		fmt.Println(password)
+
+		config.Net.TLS.Enable = true
+		config.Net.SASL.Enable = true
+		config.Net.SASL.User = user
+		config.Net.SASL.Password = password
+
+		c, err := sarama.NewClient([]string{brokerURL}, config)
+		if err != nil {
+			return nil, err
+		}
+
+		kafkaClient = c
+		kafkaLock.Lock()
+		kafkaClients[user] = c
+		kafkaLock.Unlock()
+	}
+
+	return kafkaClient, nil
+}
+
 func kafkaURL(key string) string {
 	url := conf.Broker
 	if key == conf.AdminPassword {
@@ -43,5 +79,12 @@ func kafkaURL(key string) string {
 	} else {
 		url = strings.Replace(url, KafkaPort, KafkyPort, -1)
 	}
+	return url
+}
+
+func kafkaTLSURL() string {
+	url := conf.Broker
+	url = strings.Replace(url, KafkyPort, KafkaTLSPort, -1)
+	url = strings.Replace(url, KafkaPort, KafkaTLSPort, -1)
 	return url
 }

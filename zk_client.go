@@ -31,14 +31,16 @@ func zkURL(zkPort string) string {
 }
 
 func zkChroot(c *gin.Context) (string, error) {
-	key := c.Request.Header.Get("X-Auth")
-	if !auth(key) {
+	key, err := clientIDAuth(c)
+	if err != nil {
 		c.JSON(401, "Invalid key")
 		return "", errors.New("Invalid key")
 	}
+
 	if key == conf.AdminPassword {
 		return "", nil
 	}
+
 	return "/" + key, nil
 }
 
