@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"strings"
 	"sync"
 
 	log "github.com/Sirupsen/logrus"
@@ -12,6 +13,11 @@ import (
 type ZkTopic struct {
 	Name       string
 	Partitions map[string][]int32
+}
+
+type ZkFullTopic struct {
+	Name       string
+	Partitions map[string]ZkTopicPartition
 }
 
 type ZkTopicPartition struct {
@@ -84,7 +90,7 @@ func ZkGetTopicPartitions(c *gin.Context) {
 		return
 	}
 
-	zkTopic, err := getZkTopicPartitions(zkConn, chroot, topicName)
+	zkTopic, err := getZkFullTopicPartitions(zkConn, chroot, topicName)
 	if handlHTTPErr(c, err) {
 		return
 	}
@@ -104,6 +110,57 @@ func getZkTopicPartitions(zkConn *zk.Conn, chroot string, topicName string) (*Zk
 		return nil, err
 	}
 	zkTopic.Name = topicName
+
+	return &zkTopic, nil
+}
+
+func getZkFullTopicPartitions(zkConn *zk.Conn, chroot string, topicName string) (*ZkFullTopic, error) {
+	paths, err := childrenRecursive(zkConn, chroot+"/brokers/topics/"+topicName, "")
+	if err != nil {
+		return nil, err
+	}
+
+	wg := &sync.WaitGroup{}
+	mutex := &sync.Mutex{}
+
+	zkTopic := ZkFullTopic{
+		Name:       topicName,
+		Partitions: map[string]ZkTopicPartition{},
+	}
+
+	for _, p := range paths {
+
+		wg.Add(1)
+		go func(path string) {
+			defer wg.Done()
+
+			if strings.Contains(path, "/state") {
+				data, _, err := zkConn.Get(chroot + "/brokers/topics/" + topicName + "/" + path)
+				if err != nil {
+					log.WithError(err).Error("Fail to get /brokers/topics/" + topicName + "/" + path)
+					return
+				}
+
+				var ztp ZkTopicPartition
+				err = json.Unmarshal(data, &ztp)
+				if err != nil {
+					log.WithError(err).Error("Fail to unmarshal /brokers/topics/" + topicName + "/" + path)
+					return
+				}
+
+				parts := strings.Split(path, "/")
+				partitionID := parts[1]
+
+				mutex.Lock()
+
+				zkTopic.Partitions[partitionID] = ztp
+
+				mutex.Unlock()
+			}
+
+		}(p)
+	}
+	wg.Wait()
 
 	return &zkTopic, nil
 }
