@@ -9,7 +9,7 @@ build-go:
 		-e CGO_ENABLED=0 \
 		-e GOPATH=/go \
 		-w /go/src/zkafkapi \
-			golang:1.7.1-alpine \
+			golang:1.7.3-alpine \
 				go build
 
 push:

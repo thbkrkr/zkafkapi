@@ -48,7 +48,7 @@ func main() {
 
 	go FetchTopicsOffsetsAndConsumeConsumerOffsets()
 
-	http.API(name, buildDate, gitCommit, router)
+	http.API(name, buildDate, gitCommit, 4242, router)
 }
 
 func envConfig() {
@@ -96,10 +96,11 @@ func router(r *gin.Engine) {
 	// -- Kafka
 	a.GET("/k/topics", KafkaListTopics)
 	a.GET("/k/topics/:topic", KafkaGetTopicOffsets)
+	a.GET("/k/topics/:topic/consumers/:consumer", KafkaListTopicConsumerOffsets)
 	a.GET("/k/offsets/topics", KafkaListAllTopicsOffsets)
 	a.GET("/k/offsets/consumers", KafkaListAllConsumersOffsets)
 	a.GET("/k/consumers", KafkaListConsumers)
-	a.GET("/k/t/:topic/c/:consumer", KafkaListTopicConsumerOffsets)
+	a.GET("/k/consumers/:consumer/topics/:topic/", KafkaListTopicConsumerOffsets)
 
 	// -- Zk
 	a.GET("/z/topics", ZkListTopics)

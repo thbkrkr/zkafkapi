@@ -2,8 +2,10 @@ package http
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/dgrijalva/jwt-go"
@@ -11,13 +13,14 @@ import (
 )
 
 // API provides an HTTP API based gin-gonic with cors and base routes
-func API(name string, buildDate string, gitCommit string, f func(r *gin.Engine)) {
+func API(name string, buildDate string, gitCommit string, port int, router func(r *gin.Engine)) {
+	var start time.Time
+
 	gin.SetMode(gin.ReleaseMode)
-
 	r := gin.Default()
-
 	r.Use(cORSMiddleware())
 
+	// Serve _static directory if present
 	if _, err := os.Stat("./_static"); !os.IsNotExist(err) {
 		r.Static("/s", "./_static/")
 		r.GET("/", func(c *gin.Context) {
@@ -38,6 +41,7 @@ func API(name string, buildDate string, gitCommit string, f func(r *gin.Engine))
 			"buildDate": buildDate,
 			"gitCommit": gitCommit,
 			"name":      name,
+			"uptime":    time.Since(start),
 			"ok":        "true",
 			"status":    200,
 		})
@@ -47,16 +51,18 @@ func API(name string, buildDate string, gitCommit string, f func(r *gin.Engine))
 		c.JSON(200, nil)
 	})
 
-	f(r)
+	router(r)
 
 	logrus.WithFields(logrus.Fields{
+		"name":      name,
 		"buildDate": buildDate,
 		"gitCommit": gitCommit,
-		"name":      name,
-		"port":      4242,
+		"port":      port,
 	}).Info("API started")
 
-	err := r.Run(":4242")
+	start = time.Now()
+
+	err := r.Run(fmt.Sprintf(":%d", port))
 	if err != nil {
 		logrus.Fatal(err)
 	}

@@ -56,9 +56,9 @@ func AuthRequired() gin.HandlerFunc {
 					if err != nil {
 						log.WithField("user", user).WithError(err).Error("Fail to create Zk client")
 						c.AbortWithStatus(500)
+						ZookyClient.Close()
 					}
 				}
-				zkConn = ZookyClient
 			}
 			c.Set("zkConn", zkConn)
 

@@ -124,10 +124,10 @@
 			"revisionTime": "2015-11-02T23:44:00Z"
 		},
 		{
-			"checksumSHA1": "K4ixF95oyMnG1LYUjLks/TZU7zE=",
+			"checksumSHA1": "YiInxroBjtcCwcpSZaV1R6UHkwI=",
 			"path": "github.com/thbkrkr/go-utilz/http",
-			"revision": "6b640b45f2bbf049415834a7ee74c113e52cc04f",
-			"revisionTime": "2016-07-17T21:26:02Z"
+			"revision": "3f9af93ac624e87ce4e78fdaec4502c7b64ad098",
+			"revisionTime": "2016-12-03T17:12:20Z"
 		},
 		{
 			"checksumSHA1": "5ARrN3Zq+E9zazFb/N+b08Serys=",
@@ -136,10 +136,10 @@
 			"revisionTime": "2016-02-25T17:50:37Z"
 		},
 		{
-			"checksumSHA1": "w/oQQFHCnE+S+2g5D62nfY8aDuQ=",
+			"checksumSHA1": "MlTI84eWAFvqeRgXxBtjRYHk1yQ=",
 			"path": "golang.org/x/sys/unix",
-			"revision": "62bee037599929a6e9146f29d10dd5208c43507d",
-			"revisionTime": "2016-06-14T22:52:37Z"
+			"revision": "30237cf4eefd639b184d1f2cb77a581ea0be8947",
+			"revisionTime": "2016-11-19T15:29:01Z"
 		},
 		{
 			"checksumSHA1": "39V1idWER42Lmcmg2Uy40wMzOlo=",
