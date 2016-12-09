@@ -84,7 +84,7 @@ func ZkListConsumersOffsets(c *gin.Context) {
 		parts := strings.Split(p, "/")
 
 		// Skip if it's not an 'offset path' (e.g.: "topic/offsets/consumerGroup/partition")
-		if parts[1] != "offsets" || len(parts) != 4 {
+		if len(parts) != 4 || parts[1] != "offsets" {
 			continue
 		}
 
